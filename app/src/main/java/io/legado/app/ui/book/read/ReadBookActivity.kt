@@ -21,6 +21,7 @@ import io.legado.app.constant.Status
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
+import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.ReadBookConfig
 import io.legado.app.help.ReadTipConfig
 import io.legado.app.help.storage.Backup
@@ -170,8 +171,6 @@ class ReadBookActivity : ReadBookBaseActivity(),
                     R.id.menu_group_on_line_ns -> item.isVisible = onLine
                     R.id.menu_group_local -> item.isVisible = !onLine
                     R.id.menu_group_text -> item.isVisible = book.isLocalTxt()
-                    R.id.menu_group_login ->
-                        item.isVisible = !ReadBook.webBook?.bookSource?.loginUrl.isNullOrEmpty()
                     else -> when (item.itemId) {
                         R.id.menu_enable_replace -> item.isChecked = book.getUseReplaceRule()
                         R.id.menu_re_segment -> item.isChecked = book.getReSegment()
@@ -204,6 +203,21 @@ class ReadBookActivity : ReadBookBaseActivity(),
                 }
             }
             R.id.menu_download -> showDownloadDialog()
+            R.id.menu_add_bookmark -> {
+                val book = ReadBook.book
+                val page = ReadBook.curTextChapter?.page(ReadBook.durPageIndex())
+                if (book != null && page != null) {
+                    val bookmark = Bookmark(
+                        bookUrl = book.bookUrl,
+                        bookName = book.name,
+                        chapterIndex = ReadBook.durChapterIndex,
+                        chapterPos = ReadBook.durChapterPos,
+                        chapterName = page.title,
+                        bookText = page.text.trim()
+                    )
+                    showBookMark(bookmark)
+                }
+            }
             R.id.menu_copy_text ->
                 TextDialog.show(supportFragmentManager, ReadBook.curTextChapter?.getContent())
             R.id.menu_update_toc -> ReadBook.book?.let {
@@ -229,12 +243,6 @@ class ReadBookActivity : ReadBookBaseActivity(),
                 supportFragmentManager,
                 ReadBook.book?.tocUrl
             )
-            R.id.menu_login -> ReadBook.webBook?.bookSource?.let {
-                startActivity<SourceLogin>(
-                    Pair("sourceUrl", it.bookSourceUrl),
-                    Pair("loginUrl", it.loginUrl)
-                )
-            }
             R.id.menu_set_charset -> showCharsetConfig()
             R.id.menu_get_progress -> ReadBook.book?.let {
                 viewModel.syncBookProgress(it) { progress ->
@@ -699,6 +707,15 @@ class ReadBookActivity : ReadBookBaseActivity(),
         upNavigationBarColor()
     }
 
+    override fun showLogin() {
+        ReadBook.webBook?.bookSource?.let {
+            startActivity<SourceLogin>(
+                Pair("sourceUrl", it.bookSourceUrl),
+                Pair("loginUrl", it.loginUrl)
+            )
+        }
+    }
+
     /**
      * 朗读按钮
      */
@@ -759,7 +776,9 @@ class ReadBookActivity : ReadBookBaseActivity(),
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode == Activity.RESULT_OK) {
             when (requestCode) {
-                requestCodeEditSource -> viewModel.upBookSource()
+                requestCodeEditSource -> viewModel.upBookSource() {
+                    upView()
+                }
                 requestCodeChapterList ->
                     data?.getIntExtra("index", ReadBook.durChapterIndex)?.let { index ->
                         if (index != ReadBook.durChapterIndex) {

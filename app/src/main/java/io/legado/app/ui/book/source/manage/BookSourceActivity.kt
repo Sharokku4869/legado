@@ -12,7 +12,6 @@ import androidx.appcompat.widget.SearchView
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.LiveData
 import androidx.recyclerview.widget.ItemTouchHelper
-import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.snackbar.Snackbar
 import io.legado.app.App
 import io.legado.app.R
@@ -131,6 +130,11 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                 sortCheck(Sort.Update)
                 initLiveDataBookSource(searchView.query?.toString())
             }
+            R.id.menu_sort_enable -> {
+                item.isChecked = true
+                sortCheck(Sort.Enable)
+                initLiveDataBookSource(searchView.query?.toString())
+            }
             R.id.menu_enabled_group -> {
                 searchView.setQuery(getString(R.string.enabled), true)
             }
@@ -140,14 +144,13 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             R.id.menu_help -> showHelp()
         }
         if (item.groupId == R.id.source_group) {
-            searchView.setQuery(item.title, true)
+            searchView.setQuery("group:${item.title}", true)
         }
         return super.onCompatOptionsItemSelected(item)
     }
 
     private fun initRecyclerView() {
         ATH.applyEdgeEffectColor(binding.recyclerView)
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
         binding.recyclerView.addItemDecoration(VerticalDivider(this))
         adapter = BookSourceAdapter(this, this)
         binding.recyclerView.adapter = adapter
@@ -182,32 +185,51 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             searchKey == getString(R.string.disabled) -> {
                 App.db.bookSourceDao.liveDataDisabled()
             }
+            searchKey.startsWith("group:") -> {
+                val key = searchKey.substringAfter("group:")
+                App.db.bookSourceDao.liveDataGroupSearch("%$key%")
+            }
             else -> {
                 App.db.bookSourceDao.liveDataSearch("%$searchKey%")
             }
+        }.apply {
+            observe(this@BookSourceActivity, { data ->
+                val sourceList =
+                    if (sortAscending) when (sort) {
+                        Sort.Weight -> data.sortedBy { it.weight }
+                        Sort.Name -> data.sortedWith { o1, o2 ->
+                            o1.bookSourceName.cnCompare(o2.bookSourceName)
+                        }
+                        Sort.Url -> data.sortedBy { it.bookSourceUrl }
+                        Sort.Update -> data.sortedByDescending { it.lastUpdateTime }
+                        Sort.Enable -> data.sortedWith { o1, o2 ->
+                            var sort = -o1.enabled.compareTo(o2.enabled)
+                            if (sort == 0) {
+                                sort = o1.bookSourceName.cnCompare(o2.bookSourceName)
+                            }
+                            sort
+                        }
+                        else -> data
+                    }
+                    else when (sort) {
+                        Sort.Weight -> data.sortedByDescending { it.weight }
+                        Sort.Name -> data.sortedWith { o1, o2 ->
+                            o2.bookSourceName.cnCompare(o1.bookSourceName)
+                        }
+                        Sort.Url -> data.sortedByDescending { it.bookSourceUrl }
+                        Sort.Update -> data.sortedBy { it.lastUpdateTime }
+                        Sort.Enable -> data.sortedWith { o1, o2 ->
+                            var sort = o1.enabled.compareTo(o2.enabled)
+                            if (sort == 0) {
+                                sort = o1.bookSourceName.cnCompare(o2.bookSourceName)
+                            }
+                            sort
+                        }
+                        else -> data.reversed()
+                    }
+                adapter.setItems(sourceList, adapter.diffItemCallback)
+            })
         }
-        bookSourceLiveDate?.observe(this, { data ->
-            val sourceList =
-                if (sortAscending) when (sort) {
-                    Sort.Weight -> data.sortedBy { it.weight }
-                    Sort.Name -> data.sortedWith { o1, o2 ->
-                        o1.bookSourceName.cnCompare(o2.bookSourceName)
-                    }
-                    Sort.Url -> data.sortedBy { it.bookSourceUrl }
-                    Sort.Update -> data.sortedByDescending { it.lastUpdateTime }
-                    else -> data
-                }
-                else when (sort) {
-                    Sort.Weight -> data.sortedByDescending { it.weight }
-                    Sort.Name -> data.sortedWith { o1, o2 ->
-                        o2.bookSourceName.cnCompare(o1.bookSourceName)
-                    }
-                    Sort.Url -> data.sortedByDescending { it.bookSourceUrl }
-                    Sort.Update -> data.sortedBy { it.lastUpdateTime }
-                    else -> data.reversed()
-                }
-            adapter.setItems(sourceList)
-        })
     }
 
     private fun showHelp() {
@@ -481,6 +503,6 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
     }
 
     enum class Sort {
-        Default, Name, Url, Weight, Update
+        Default, Name, Url, Weight, Update, Enable
     }
 }
